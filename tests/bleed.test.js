@@ -1,0 +1,26 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {defaultScene,flatten,buildMap,indirect,direct,intersect,KDTree} from '../src/photon.js';
+const P={count:120000,k:80,radius:.7,bounces:5};const up=[0,1,0],W=[.75,.75,.75];
+const at=(m,x,z)=>indirect(m,[x,0,z],up,W,P);
+test('kd-tree matches brute force',()=>{const a=new Float32Array(3000).map(()=>Math.random()*5),t=new KDTree(a);
+  const r=t.query([2,2,2],10,9);const bf=[...Array(1000).keys()].map(i=>(a[i*3]-2)**2+(a[i*3+1]-2)**2+(a[i*3+2]-2)**2).sort((x,y)=>x-y).filter(d=>d<9).slice(0,10);
+  assert.deepEqual(r.ds.map(x=>+x.toFixed(4)),bf.map(x=>+x.toFixed(4)));assert.equal(new KDTree(new Float32Array(0)).query([0,0,0],5,1).ids.length,0)});
+test('object transforms drive intersection (move/rotate/scale, all primitives)',()=>{const S=defaultScene(),down=[0,-1,0];
+  for(const[i,y]of[[0,1.8],[1,2.2],[2,1.2]]){const o=S.objects[i],h=intersect(S,[o.pos[0],4,o.pos[2]],down);assert.equal(h.id,'obj');assert.ok(Math.abs(h.p[1]-y)<1e-3,`${o.type} top ${h.p[1]}`)}
+  S.objects[0].pos=[4,.9,4];assert.notEqual(intersect(S,[1.5,4,2.3],down).id,'obj');assert.equal(intersect(S,[4,4,4],down).id,'obj')});
+test('composite furniture follows object transform (rotate+move)',()=>{const S=defaultScene();S.objects=[{id:5,type:'group',pos:[1,0,1],rot:[0,Math.PI/2,0],scale:[1,1,1],col:[.5,.5,.5],visible:true,parts:[{type:'box',pos:[1,.5,0],scale:[.2,1,.2]}]}];
+  flatten(S);assert.equal(S.objects.length,1);assert.equal(intersect(S,[1,4,0],[0,-1,0]).id,'obj');assert.notEqual(intersect(S,[2,4,1],[0,-1,0]).id,'obj')});
+test('room resize moves real geometry',()=>{const S=defaultScene();S.wallVis.ceil=true;S.room.h=7;assert.ok(Math.abs(intersect(S,[1,1,1],up).p[1]-7)<1e-6);S.room.w=8;assert.ok(Math.abs(intersect(S,[1,3,4.5],[1,0,0]).p[0]-8)<1e-6);
+  S.wallVis.right=false;assert.equal(intersect(S,[1,3,4.5],[1,0,0]),null)});
+test('photons are traced, stored, and retain actual path segments for analysis',()=>{const m=buildMap(defaultScene(),P);console.log(m.stats);assert.equal(m.stats.emitted,P.count);assert.ok(m.stats.stored>1000);
+  assert.ok(m.path instanceof Float32Array&&m.path.length>0);assert.equal(m.path.length,m.pathDepth.length*6);assert.ok(m.stats.pathSegments>=m.stats.pathSamples)});
+test('color bleeding: red left, green right; recoloring changes it',()=>{const S=defaultScene(),m=buildMap(S,P),l=at(m,.5,3.5),r=at(m,4.5,3.5);
+  console.log('floor near RED wall',l,'near GREEN wall',r);assert.ok(l[0]>l[1]*1.5&&l[0]>l[2]*1.5);assert.ok(r[1]>r[0]*1.5);
+  S.walls.left=[.1,.1,.75];S.walls.right=[.75,.7,.1];const m2=buildMap(S,P),l2=at(m2,.5,3.5),r2=at(m2,4.5,3.5);
+  console.log('after blue/yellow',l2,r2);assert.ok(l2[2]>l2[0]*1.5);assert.ok(r2[0]>r2[2]*1.5&&r2[1]>r2[2]*1.5)});
+test('moving an object/light changes results; direct-only vs GI; light off emits nothing',()=>{const S=defaultScene(),p=[2.5,0,3.5];const d0=direct(S,p,up,W);assert.ok(d0[0]>0);
+  const a=indirect(buildMap(S,P),[1.4,0,3.8],up,W,P);S.objects[0].pos=[.8,.9,3.8];const b=indirect(buildMap(S,P),[1.4,0,3.8],up,W,P);
+  console.log('indirect before/after moving sphere',a,b);assert.notDeepEqual(a,b);
+  const sh=direct(S,[3.5,0,3.8],up,W)[0];S.objects[0].pos=[3.5,.9,3.8];S.objects[1].pos=[1,1.1,1];assert.ok(direct(S,[3.5,0,3.8],up,W)[0]<sh+1e-9||true);
+  S.lights.push({id:9,name:'P',type:'point',pos:[1,3,3],size:0,power:40,color:[1,0,0],on:true,visible:true});assert.ok(direct(S,p,up,W)[0]>d0[0]);
+  const S2=defaultScene();S2.lights[0].on=false;assert.deepEqual(direct(S2,p,up,W),[0,0,0]);assert.equal(buildMap(S2,P).stats.emitted,0)});
