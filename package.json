@@ -1,1 +1,21 @@
-{"name":"photonstudio","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"vite","build":"vite build","test":"node --test tests/bleed.test.js tests/house.test.js tests/render-modes.test.js"},"devDependencies":{"vite":"^5.4.0"},"dependencies":{"three":"^0.186.1"}}
+
+{
+  "name": "photonstudio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test tests/bleed.test.js tests/house.test.js tests/render-modes.test.js"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}
